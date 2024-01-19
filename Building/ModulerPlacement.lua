@@ -7,6 +7,9 @@ local build = {
 BNode is Back Node
 FNode is Front Node
 
+FNode or BNode must face in direction that next part will face. Not toward the next part!
+So if BNode is facing
+
 .addPart(PVInstance)
 PVInstance -> Part or Model (MUST CONTAIN 2 ATTACHMENTS, show above)
 .connectTo(a, b)
@@ -31,18 +34,33 @@ local function GetBlacklist(node_list)
     }
 end
 
-local function BuildComponents(model, BData)
+local function CalculateCF(node1, node2)
+    return node1.WorldCFrame:ToWorldSpace(CFrame.new(node2.Position))
+end
+
+local function CreateConnection(model, BData, isBack: boolean?) -- Not super fancy stuff, just caclulates where to positon it
     local modelNodes = VerifyAttachments(model)
     if not modelNodes then return end
-    local FrontNode = modelNodes.FNode
-    local BackNode = BData.nodes.BNode
+    local Node1 = modelNodes.FNode
+    local Node2 = BData.nodes.BNode
     local Clone = BData.model:Clone()
-    local CF = FrontNode.WorldCFrame:ToWorldSpace(BackNode.CFrame)
-    Clone:SetPivot(CF)
+    if isBack then
+        Clone:SetPivot(CalculateCF(Node1.WorldCFrame, CFrame.new(Node2.Position)))
+    else
+        Clone:SetPivot(CalculateCF(Node1.WorldCFrame, CFrame.new(Node2.Position)))
+    end
     Clone.Parent = build.dump_area
 end
 
-function build.addPart(model: PVIstance)
+
+local function CheckBlacklist(A_Blacklist, B_Blacklist, a_name, b_name)
+    if table.find(A_Blacklist, b_name) or table.find(B_Blacklist, a_name) then
+        return false
+    end
+    return true
+end
+
+function build.addPart(model: PVIstance) -- Literally just adds the part
     local partData = {}
     partData.nodes = VerifyAttachments(model)
     if not partData.nodes then
@@ -54,10 +72,10 @@ function build.addPart(model: PVIstance)
         partData.bounding_size = model:GetExtentsSize()
     end
     build.modules[model.Name] = partData
-    return build.modules[model.Name]
+    return build.modules[model.Name] --// Pointer
 end
 
-function build.place(module_name, cframe)
+function build.place(module_name, cframe) --// Literally just to place stuff
     local data = build.modules[module_name]
     if not data then return false end
     local Clone = data.model:Clone()
@@ -67,16 +85,24 @@ function build.place(module_name, cframe)
     return true
 end
 
-function build.connectTo(model, module_name) -- (Existing Module, Non-Existing Module)
+function build.connectTo(model, module_name, opposite) -- Select first model and add module onto it automatically. Wave collapse would be cool wih this
     local AData = build.modules[model.Name]
     local BData = build.modules[module_name]
     if AData and BData then
         local A_Blacklist, B_Blacklist = AData.blacklistModules, BData.blacklistModules
-        if table.find(A_Blacklist.front, module_name) or table.find(B_Blacklist.back, model.Name) then
-            return
-        else
-            BuildComponents(model, BData)
+        if CheckBlacklist(
+            opposite and A_Blacklist.back or A_Blacklist.front, 
+            opposite and B_Blacklist.front or B_Blacklist.back,
+            module_name,
+            model.Name
+        ) then
+            if opposite then
+                CreateConnection(model, BData, true)
+            else
+                CreateConnection(model, BData, false)
+            end
         end
+        
     end
 end
 
